@@ -1,6 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -11,32 +12,48 @@ public class LoginPage extends JFrame {
     private JCheckBox showPasswordCheckBox;
     private int loginAttempts = 0;
 
-    // Mock user data (for testing)
+    // Mock user data
     private Map<String, String> userDatabase;
 
     public LoginPage() {
-        // Initialize users (Username -> Password)
+        // Initialize users
         userDatabase = new HashMap<>();
         userDatabase.put("admin", "admin123");
         userDatabase.put("sales", "sales123");
         userDatabase.put("inventory", "inventory123");
 
-        // Apply system-native UI for modern look
+        // Apply system look and feel
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        // 🔹 Window Settings
+        // 🔹 Set up main frame
         setTitle("Login - Textile Factory System");
-        setSize(400, 300);
+        setSize(800, 400); // Set initial size
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setResizable(true);
-        setLayout(new GridBagLayout());
-        
-        // 🔹 Layout Configuration
+
+        // Create two panels (Left: Login, Right: Image)
+        JPanel loginPanel = createLoginPanel();
+        JPanel imagePanel = createImagePanel();
+
+        // Split Pane (Left: Login Form | Right: Image)
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, loginPanel, imagePanel);
+        splitPane.setDividerLocation(400); // Initial split position (Half-Half)
+        splitPane.setResizeWeight(0.5); // Keeps proportion when resizing
+
+        add(splitPane);
+        setVisible(true);
+    }
+
+    private JPanel createLoginPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridBagLayout());
+        panel.setBackground(Color.WHITE);
+
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(10, 10, 10, 10);
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -48,34 +65,30 @@ public class LoginPage extends JFrame {
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridwidth = 2;
-        add(welcomeLabel, gbc);
+        panel.add(welcomeLabel, gbc);
 
         // 🔹 Username Label & Field
         JLabel userLabel = new JLabel("Username:");
         gbc.gridy = 1;
         gbc.gridwidth = 1;
-        add(userLabel, gbc);
+        panel.add(userLabel, gbc);
 
         usernameField = new JTextField();
         usernameField.setPreferredSize(new Dimension(200, 30));
         gbc.gridx = 1;
-        add(usernameField, gbc);
-
-        // Auto-focus password field when Enter is pressed in username
+        panel.add(usernameField, gbc);
         usernameField.addActionListener(e -> passwordField.requestFocus());
 
         // 🔹 Password Label & Field
         JLabel passLabel = new JLabel("Password:");
         gbc.gridx = 0;
         gbc.gridy = 2;
-        add(passLabel, gbc);
+        panel.add(passLabel, gbc);
 
         passwordField = new JPasswordField();
         passwordField.setPreferredSize(new Dimension(200, 30));
         gbc.gridx = 1;
-        add(passwordField, gbc);
-
-        // Auto-submit when Enter is pressed in password field
+        panel.add(passwordField, gbc);
         passwordField.addActionListener(e -> authenticateUser());
 
         // 🔹 Show Password Checkbox
@@ -85,30 +98,57 @@ public class LoginPage extends JFrame {
         );
         gbc.gridy = 3;
         gbc.gridx = 1;
-        add(showPasswordCheckBox, gbc);
+        panel.add(showPasswordCheckBox, gbc);
 
         // 🔹 Login Button
         JButton loginButton = new JButton("Login");
         gbc.gridx = 0;
         gbc.gridy = 4;
         gbc.gridwidth = 2;
-        add(loginButton, gbc);
+        panel.add(loginButton, gbc);
 
-        // 🔹 Status Label (for errors)
+        // 🔹 Status Label
         statusLabel = new JLabel("", JLabel.CENTER);
         statusLabel.setForeground(Color.RED);
         gbc.gridy = 5;
-        add(statusLabel, gbc);
+        panel.add(statusLabel, gbc);
 
-        // 🔹 Login Action Listener
+        // 🔹 Login Action
         loginButton.addActionListener(e -> authenticateUser());
 
         // 🔹 Exit on ESC Key
         getRootPane().registerKeyboardAction(e -> System.exit(0),
-                KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0),
+                KeyStroke.getKeyStroke("ESCAPE"),
                 JComponent.WHEN_IN_FOCUSED_WINDOW);
 
-        setVisible(true);
+        return panel;
+    }
+
+    private JPanel createImagePanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        
+        // 🔹 Load Image (Ensure it's in the project root)
+        ImageIcon icon = new ImageIcon("textile_logo.jpg"); 
+        JLabel imageLabel = new JLabel(icon);
+        imageLabel.setHorizontalAlignment(JLabel.CENTER);
+
+        // Resize the image dynamically
+        panel.addComponentListener(new java.awt.event.ComponentAdapter() {
+            public void componentResized(java.awt.event.ComponentEvent evt) {
+                ImageIcon scaledIcon = scaleImage(icon, panel.getWidth(), panel.getHeight());
+                imageLabel.setIcon(scaledIcon);
+            }
+        });
+
+        panel.add(imageLabel, BorderLayout.CENTER);
+        return panel;
+    }
+
+    // 🔹 Resize Image to Fit Panel
+    private ImageIcon scaleImage(ImageIcon icon, int width, int height) {
+        Image originalImage = icon.getImage();
+        Image resizedImage = originalImage.getScaledInstance(width, height, Image.SCALE_SMOOTH);
+        return new ImageIcon(resizedImage);
     }
 
     private void authenticateUser() {
@@ -127,8 +167,8 @@ public class LoginPage extends JFrame {
 
         if (userDatabase.containsKey(username) && userDatabase.get(username).equals(password)) {
             JOptionPane.showMessageDialog(this, "✅ Login Successful! Welcome, " + username + ".");
-            this.dispose(); // Close login window
-            openUserDashboard(username); // Open respective dashboard
+            this.dispose();
+            openUserDashboard(username);
         } else {
             loginAttempts++;
             statusLabel.setText("<html><font color='red'>⚠ Incorrect Credentials. Attempt: " 
