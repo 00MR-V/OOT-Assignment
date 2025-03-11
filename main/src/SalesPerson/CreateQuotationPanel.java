@@ -40,7 +40,7 @@ public class CreateQuotationPanel extends JPanel {
     private JButton btnSubmit;
     private JButton btnClear;
 
-    // Default constructor for new quotation
+    // Constructor for creating a new quotation
     public CreateQuotationPanel(int salesPersonId) {
         this.salesPersonId = salesPersonId;
         initializeUI();
@@ -142,12 +142,13 @@ public class CreateQuotationPanel extends JPanel {
         JPanel itemsPanel = new JPanel(new BorderLayout());
         itemsPanel.setBorder(BorderFactory.createTitledBorder("Available Items"));
         listModel = new DefaultListModel<>();
-        // For demonstration, add dummy items
+        // For demonstration, add dummy items (in real use these might come from a config or DB)
         listModel.addElement("Item A");
         listModel.addElement("Item B");
         listModel.addElement("Item C");
         listAvailableItems = new JList<>(listModel);
         listAvailableItems.setVisibleRowCount(4);
+        listAvailableItems.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         JScrollPane itemsScrollPane = new JScrollPane(listAvailableItems);
         itemsPanel.add(itemsScrollPane, BorderLayout.CENTER);
 
@@ -195,6 +196,10 @@ public class CreateQuotationPanel extends JPanel {
         boolean discount = chDiscount.isSelected();
         String additionalInfo = taAdditionalInfo.getText().trim();
 
+        // Get selected available items as comma-separated string
+        java.util.List<String> selected = listAvailableItems.getSelectedValuesList();
+        String availableItems = String.join(",", selected);
+
         if(customerName.isEmpty() || customerAddress.isEmpty() || customerContact.isEmpty() || quantityStr.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please fill in all mandatory fields.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
@@ -232,8 +237,8 @@ public class CreateQuotationPanel extends JPanel {
                 }
                 pstCustomer.close();
 
-                // Insert quotation (with additional fields)
-                String sqlQuotation = "INSERT INTO quotations (customer_id, sales_person_id, date_created, status, product_category, quantity, delivery_option, discount, additional_info, customer_type) VALUES (?, ?, CURRENT_DATE(), ?, ?, ?, ?, ?, ?, ?)";
+                // Insert quotation (with additional fields, including available_items)
+                String sqlQuotation = "INSERT INTO quotations (customer_id, sales_person_id, date_created, status, product_category, quantity, delivery_option, discount, additional_info, customer_type, available_items) VALUES (?, ?, CURRENT_DATE(), ?, ?, ?, ?, ?, ?, ?, ?)";
                 PreparedStatement pstQuotation = conn.prepareStatement(sqlQuotation);
                 pstQuotation.setInt(1, newCustomerId);
                 pstQuotation.setInt(2, salesPersonId);
@@ -244,13 +249,14 @@ public class CreateQuotationPanel extends JPanel {
                 pstQuotation.setBoolean(7, discount);
                 pstQuotation.setString(8, additionalInfo);
                 pstQuotation.setString(9, customerType);
+                pstQuotation.setString(10, availableItems);
                 pstQuotation.executeUpdate();
                 pstQuotation.close();
 
                 JOptionPane.showMessageDialog(this, "Quotation submitted successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 // EDIT mode: Update the existing customer and quotation records.
-                // First, update customer details.
+                // Update customer details.
                 String sqlUpdateCustomer = "UPDATE customers SET name = ?, address = ?, contact_details = ? WHERE customer_id = ?";
                 PreparedStatement pstCust = conn.prepareStatement(sqlUpdateCustomer);
                 pstCust.setString(1, customerName);
@@ -260,8 +266,8 @@ public class CreateQuotationPanel extends JPanel {
                 pstCust.executeUpdate();
                 pstCust.close();
 
-                // Then, update quotation details (excluding date_created and status)
-                String sqlUpdateQuotation = "UPDATE quotations SET product_category = ?, quantity = ?, delivery_option = ?, discount = ?, additional_info = ?, customer_type = ? WHERE quotation_id = ?";
+                // Update quotation details (excluding date_created and status)
+                String sqlUpdateQuotation = "UPDATE quotations SET product_category = ?, quantity = ?, delivery_option = ?, discount = ?, additional_info = ?, customer_type = ?, available_items = ? WHERE quotation_id = ?";
                 PreparedStatement pstQuo = conn.prepareStatement(sqlUpdateQuotation);
                 pstQuo.setString(1, productCategory);
                 pstQuo.setInt(2, quantity);
@@ -269,7 +275,8 @@ public class CreateQuotationPanel extends JPanel {
                 pstQuo.setBoolean(4, discount);
                 pstQuo.setString(5, additionalInfo);
                 pstQuo.setString(6, customerType);
-                pstQuo.setInt(7, quotationId);
+                pstQuo.setString(7, availableItems);
+                pstQuo.setInt(8, quotationId);
                 pstQuo.executeUpdate();
                 pstQuo.close();
 
@@ -300,7 +307,7 @@ public class CreateQuotationPanel extends JPanel {
         try {
             Connection conn = DBConnection.getConnection();
             String query = "SELECT c.customer_id, c.name, c.address, c.contact_details, " +
-                           "q.product_category, q.quantity, q.delivery_option, q.discount, q.additional_info, q.customer_type " +
+                           "q.product_category, q.quantity, q.delivery_option, q.discount, q.additional_info, q.customer_type, q.available_items " +
                            "FROM quotations q JOIN customers c ON q.customer_id = c.customer_id " +
                            "WHERE q.quotation_id = ?";
             PreparedStatement pst = conn.prepareStatement(query);
@@ -322,6 +329,13 @@ public class CreateQuotationPanel extends JPanel {
                 }
                 chDiscount.setSelected(rs.getBoolean("discount"));
                 taAdditionalInfo.setText(rs.getString("additional_info"));
+                // Load available items: assume they are stored as a comma-separated string.
+                String availItems = rs.getString("available_items");
+                if (availItems != null && !availItems.isEmpty()) {
+                    String[] items = availItems.split(",");
+                    int[] indices = getIndicesForItems(items);
+                    listAvailableItems.setSelectedIndices(indices);
+                }
             }
             rs.close();
             pst.close();
@@ -329,5 +343,22 @@ public class CreateQuotationPanel extends JPanel {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error loading quotation data: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    // Helper method to get indices of available items in the list model
+    private int[] getIndicesForItems(String[] items) {
+        java.util.List<Integer> indices = new java.util.ArrayList<>();
+        for (String item : items) {
+            for (int i = 0; i < listModel.getSize(); i++) {
+                if (listModel.get(i).equalsIgnoreCase(item.trim())) {
+                    indices.add(i);
+                }
+            }
+        }
+        int[] result = new int[indices.size()];
+        for (int i = 0; i < indices.size(); i++) {
+            result[i] = indices.get(i);
+        }
+        return result;
     }
 }
