@@ -14,8 +14,8 @@ public class QuotationPanel extends JPanel {
     
     public QuotationPanel(int salesPersonId) {
         this.salesPersonId = salesPersonId;
-        setLayout(new BorderLayout(10,10));
-        setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
         // Header label
         JLabel headerLabel = new JLabel("Your Quotations", JLabel.CENTER);
@@ -44,8 +44,9 @@ public class QuotationPanel extends JPanel {
         
         try {
             Connection conn = DBConnection.getConnection();
-            // Retrieve quotations in descending order (latest first)
-            String query = "SELECT q.quotation_id, q.date_created, q.status, c.name AS customer_name " +
+            // Retrieve quotations with additional business details
+            String query = "SELECT q.quotation_id, q.date_created, q.status, c.name AS customer_name, " +
+                           "q.product_category, q.quantity, q.delivery_option, q.discount, q.additional_info, q.customer_type, q.available_items " +
                            "FROM quotations q JOIN customers c ON q.customer_id = c.customer_id " +
                            "WHERE q.sales_person_id = ? ORDER BY q.date_created DESC, q.quotation_id DESC";
             PreparedStatement pst = conn.prepareStatement(query);
@@ -57,20 +58,37 @@ public class QuotationPanel extends JPanel {
                 Date dateCreated = rs.getDate("date_created");
                 String status = rs.getString("status");
                 String customerName = rs.getString("customer_name");
+                String productCategory = rs.getString("product_category");
+                int quantity = rs.getInt("quantity");
+                String deliveryOption = rs.getString("delivery_option");
+                boolean discount = rs.getBoolean("discount");
+                String additionalInfo = rs.getString("additional_info");
+                String customerType = rs.getString("customer_type");
+                String availableItems = rs.getString("available_items");
+                
+                // Combine details using HTML formatting for clarity
+                String details = "<html>"
+                        + "<b>Quotation ID:</b> " + quotationId + "<br>"
+                        + "<b>Customer:</b> " + customerName + "<br>"
+                        + "<b>Date:</b> " + dateCreated + "<br>"
+                        + "<b>Status:</b> " + status + "<br>"
+                        + "<b>Category:</b> " + productCategory + "<br>"
+                        + "<b>Quantity:</b> " + quantity + "<br>"
+                        + "<b>Delivery:</b> " + deliveryOption + "<br>"
+                        + "<b>Discount:</b> " + (discount ? "Yes" : "No") + "<br>"
+                        + "<b>Customer Type:</b> " + customerType + "<br>"
+                        + "<b>Available Items:</b> " + availableItems + "<br>"
+                        + "<b>Additional Info:</b> " + additionalInfo
+                        + "</html>";
                 
                 // Create a sub-panel for each quotation
-                JPanel qp = new JPanel(new BorderLayout(10,10));
+                JPanel qp = new JPanel(new BorderLayout(10, 10));
                 qp.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-                qp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+                qp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
                 
-                // Left side: Display quotation details
-                JPanel detailsPanel = new JPanel();
-                detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
-                detailsPanel.add(new JLabel("Quotation ID: " + quotationId));
-                detailsPanel.add(new JLabel("Customer: " + customerName));
-                detailsPanel.add(new JLabel("Date: " + dateCreated));
-                detailsPanel.add(new JLabel("Status: " + status));
-                qp.add(detailsPanel, BorderLayout.CENTER);
+                // Left side: Display detailed quotation information
+                JLabel detailsLabel = new JLabel(details);
+                qp.add(detailsLabel, BorderLayout.CENTER);
                 
                 // Right side: Action components (Edit button and status dropdown)
                 JPanel actionPanel = new JPanel(new GridLayout(2, 1, 5, 5));
@@ -89,7 +107,7 @@ public class QuotationPanel extends JPanel {
                         editFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
                         CreateQuotationPanel editPanel = new CreateQuotationPanel(salesPersonId, quotationId);
                         editFrame.add(editPanel);
-                        editFrame.setSize(600,600);
+                        editFrame.setSize(600, 600);
                         editFrame.setLocationRelativeTo(null);
                         editFrame.setVisible(true);
                     }

@@ -5,6 +5,8 @@ import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 import database.DBConnection;
 
@@ -44,6 +46,7 @@ public class CreateQuotationPanel extends JPanel {
     public CreateQuotationPanel(int salesPersonId) {
         this.salesPersonId = salesPersonId;
         initializeUI();
+        loadAvailableItems();
     }
 
     // Overloaded constructor for editing an existing quotation
@@ -56,14 +59,14 @@ public class CreateQuotationPanel extends JPanel {
     }
 
     private void initializeUI() {
-        setLayout(new BorderLayout(10,10));
-        setBorder(BorderFactory.createEmptyBorder(10,10,10,10));
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         // --- Customer Details Panel ---
         JPanel customerPanel = new JPanel(new GridBagLayout());
         customerPanel.setBorder(BorderFactory.createTitledBorder("Customer Details"));
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(5,5,5,5);
+        gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
         gbc.gridx = 0;
@@ -99,7 +102,7 @@ public class CreateQuotationPanel extends JPanel {
         JPanel quotationPanel = new JPanel(new GridBagLayout());
         quotationPanel.setBorder(BorderFactory.createTitledBorder("Quotation Details"));
         GridBagConstraints gbc2 = new GridBagConstraints();
-        gbc2.insets = new Insets(5,5,5,5);
+        gbc2.insets = new Insets(5, 5, 5, 5);
         gbc2.fill = GridBagConstraints.HORIZONTAL;
 
         gbc2.gridx = 0;
@@ -142,10 +145,7 @@ public class CreateQuotationPanel extends JPanel {
         JPanel itemsPanel = new JPanel(new BorderLayout());
         itemsPanel.setBorder(BorderFactory.createTitledBorder("Available Items"));
         listModel = new DefaultListModel<>();
-        // For demonstration, add dummy items (in real use these might come from a config or DB)
-        listModel.addElement("Item A");
-        listModel.addElement("Item B");
-        listModel.addElement("Item C");
+        // Items will be loaded dynamically from the database (see loadAvailableItems method)
         listAvailableItems = new JList<>(listModel);
         listAvailableItems.setVisibleRowCount(4);
         listAvailableItems.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -153,9 +153,9 @@ public class CreateQuotationPanel extends JPanel {
         itemsPanel.add(itemsScrollPane, BorderLayout.CENTER);
 
         // --- Additional Information & Buttons Panel ---
-        JPanel additionalPanel = new JPanel(new BorderLayout(10,10));
+        JPanel additionalPanel = new JPanel(new BorderLayout(10, 10));
         additionalPanel.setBorder(BorderFactory.createTitledBorder("Additional Information"));
-        taAdditionalInfo = new JTextArea(4,20);
+        taAdditionalInfo = new JTextArea(4, 20);
         JScrollPane taScrollPane = new JScrollPane(taAdditionalInfo);
         additionalPanel.add(taScrollPane, BorderLayout.CENTER);
 
@@ -184,6 +184,29 @@ public class CreateQuotationPanel extends JPanel {
         btnClear.addActionListener(e -> clearFields());
     }
 
+    // Loads available items dynamically from the "items" table
+    private void loadAvailableItems() {
+        listModel.clear();
+        try {
+            Connection conn = DBConnection.getConnection();
+            String query = "SELECT item_name, stock_level FROM items ORDER BY item_name";
+            PreparedStatement pst = conn.prepareStatement(query);
+            ResultSet rs = pst.executeQuery();
+            while (rs.next()) {
+                String itemName = rs.getString("item_name");
+                int stock = rs.getInt("stock_level");
+                // Display as "Item Name (Stock: X)"
+                listModel.addElement(itemName + " (Stock: " + stock + ")");
+            }
+            rs.close();
+            pst.close();
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error loading available items: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
     // This method either inserts a new quotation or updates an existing one.
     private void saveQuotation() {
         String customerName = tfCustomerName.getText().trim();
@@ -196,11 +219,20 @@ public class CreateQuotationPanel extends JPanel {
         boolean discount = chDiscount.isSelected();
         String additionalInfo = taAdditionalInfo.getText().trim();
 
-        // Get selected available items as comma-separated string
+        // Get selected available items as comma-separated string.
+        // Extract only the item name from the string (removing the stock details).
         java.util.List<String> selected = listAvailableItems.getSelectedValuesList();
-        String availableItems = String.join(",", selected);
+        List<String> selectedItems = new ArrayList<>();
+        for (String item : selected) {
+            if (item.contains(" (Stock:")) {
+                selectedItems.add(item.substring(0, item.indexOf(" (Stock:")));
+            } else {
+                selectedItems.add(item);
+            }
+        }
+        String availableItems = String.join(",", selectedItems);
 
-        if(customerName.isEmpty() || customerAddress.isEmpty() || customerContact.isEmpty() || quantityStr.isEmpty()) {
+        if (customerName.isEmpty() || customerAddress.isEmpty() || customerContact.isEmpty() || quantityStr.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Please fill in all mandatory fields.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
@@ -208,7 +240,7 @@ public class CreateQuotationPanel extends JPanel {
         int quantity;
         try {
             quantity = Integer.parseInt(quantityStr);
-        } catch(NumberFormatException ex) {
+        } catch (NumberFormatException ex) {
             JOptionPane.showMessageDialog(this, "Quantity must be a valid number.", "Error", JOptionPane.ERROR_MESSAGE);
             return;
         }
@@ -225,12 +257,12 @@ public class CreateQuotationPanel extends JPanel {
                 pstCustomer.setString(2, customerAddress);
                 pstCustomer.setString(3, customerContact);
                 int affectedRows = pstCustomer.executeUpdate();
-                if(affectedRows == 0) {
+                if (affectedRows == 0) {
                     throw new SQLException("Creating customer failed, no rows affected.");
                 }
                 ResultSet generatedKeys = pstCustomer.getGeneratedKeys();
                 int newCustomerId = 0;
-                if(generatedKeys.next()){
+                if (generatedKeys.next()){
                     newCustomerId = generatedKeys.getInt(1);
                 } else {
                     throw new SQLException("Creating customer failed, no ID obtained.");
@@ -283,7 +315,7 @@ public class CreateQuotationPanel extends JPanel {
                 JOptionPane.showMessageDialog(this, "Quotation updated successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
             }
             clearFields();
-        } catch(SQLException ex) {
+        } catch (SQLException ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this, "Error while saving quotation: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
@@ -345,12 +377,17 @@ public class CreateQuotationPanel extends JPanel {
         }
     }
 
-    // Helper method to get indices of available items in the list model
+    // Helper method to get indices of available items in the list model based on plain item names.
     private int[] getIndicesForItems(String[] items) {
-        java.util.List<Integer> indices = new java.util.ArrayList<>();
+        List<Integer> indices = new ArrayList<>();
         for (String item : items) {
             for (int i = 0; i < listModel.getSize(); i++) {
-                if (listModel.get(i).equalsIgnoreCase(item.trim())) {
+                String listItem = listModel.get(i);
+                // Extract item name (remove stock details if present)
+                if (listItem.contains(" (Stock:")) {
+                    listItem = listItem.substring(0, listItem.indexOf(" (Stock:"));
+                }
+                if (listItem.equalsIgnoreCase(item.trim())) {
                     indices.add(i);
                 }
             }
