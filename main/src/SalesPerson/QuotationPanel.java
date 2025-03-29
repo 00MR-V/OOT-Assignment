@@ -2,9 +2,14 @@ package SalesPerson;
 
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
+import javax.swing.border.CompoundBorder;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.*;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
 import database.DBConnection;
 
 public class QuotationPanel extends JPanel {
@@ -33,7 +38,7 @@ public class QuotationPanel extends JPanel {
         loadQuotationsFromDB();
     }
     
-    // Public method to refresh quotations (for the refresh button)
+    // Public method to refresh quotations (e.g., from a Refresh button)
     public void refreshQuotations() {
         loadQuotationsFromDB();
     }
@@ -44,11 +49,16 @@ public class QuotationPanel extends JPanel {
         
         try {
             Connection conn = DBConnection.getConnection();
-            // Retrieve quotations with additional business details
-            String query = "SELECT q.quotation_id, q.date_created, q.status, c.name AS customer_name, " +
-                           "q.product_category, q.quantity, q.delivery_option, q.discount, q.additional_info, q.customer_type, q.available_items " +
-                           "FROM quotations q JOIN customers c ON q.customer_id = c.customer_id " +
-                           "WHERE q.sales_person_id = ? ORDER BY q.date_created DESC, q.quotation_id DESC";
+            // This query includes columns like discount, express_fee, etc.
+            // even though we won't display them in the preview.
+            String query = 
+                "SELECT q.quotation_id, q.date_created, q.status, c.name AS customer_name, "
+              + "q.delivery_option, q.discount, q.express_fee, q.total_amount, q.additional_info "
+              + "FROM quotations q "
+              + "JOIN customers c ON q.customer_id = c.customer_id "
+              + "WHERE q.sales_person_id = ? "
+              + "ORDER BY q.date_created DESC, q.quotation_id DESC";
+            
             PreparedStatement pst = conn.prepareStatement(query);
             pst.setInt(1, salesPersonId);
             ResultSet rs = pst.executeQuery();
@@ -58,35 +68,30 @@ public class QuotationPanel extends JPanel {
                 Date dateCreated = rs.getDate("date_created");
                 String status = rs.getString("status");
                 String customerName = rs.getString("customer_name");
-                String productCategory = rs.getString("product_category");
-                int quantity = rs.getInt("quantity");
-                String deliveryOption = rs.getString("delivery_option");
-                boolean discount = rs.getBoolean("discount");
-                String additionalInfo = rs.getString("additional_info");
-                String customerType = rs.getString("customer_type");
-                String availableItems = rs.getString("available_items");
                 
-                // Combine details using HTML formatting for clarity
+                // Even though we fetch these columns, we won't display them in the preview:
+                String deliveryOption = rs.getString("delivery_option");
+                double discount = rs.getDouble("discount");
+                double expressFee = rs.getDouble("express_fee");
+                double totalAmount = rs.getDouble("total_amount");
+                String additionalInfo = rs.getString("additional_info");
+                
+                // Minimal display: ID, Customer Name, Date, Status, and Total Amount.
                 String details = "<html>"
                         + "<b>Quotation ID:</b> " + quotationId + "<br>"
                         + "<b>Customer:</b> " + customerName + "<br>"
                         + "<b>Date:</b> " + dateCreated + "<br>"
                         + "<b>Status:</b> " + status + "<br>"
-                        + "<b>Category:</b> " + productCategory + "<br>"
-                        + "<b>Quantity:</b> " + quantity + "<br>"
-                        + "<b>Delivery:</b> " + deliveryOption + "<br>"
-                        + "<b>Discount:</b> " + (discount ? "Yes" : "No") + "<br>"
-                        + "<b>Customer Type:</b> " + customerType + "<br>"
-                        + "<b>Available Items:</b> " + availableItems + "<br>"
-                        + "<b>Additional Info:</b> " + additionalInfo
+                        + "<b>Total Amount:</b> Rs " + String.format("%.2f", totalAmount)
                         + "</html>";
                 
                 // Create a sub-panel for each quotation
                 JPanel qp = new JPanel(new BorderLayout(10, 10));
+                // Reduced maximum height here (changed from 150 to 100)
+                qp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
                 qp.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-                qp.setMaximumSize(new Dimension(Integer.MAX_VALUE, 150));
                 
-                // Left side: Display detailed quotation information
+                // Left side: Display minimal details
                 JLabel detailsLabel = new JLabel(details);
                 qp.add(detailsLabel, BorderLayout.CENTER);
                 
@@ -100,26 +105,22 @@ public class QuotationPanel extends JPanel {
                 actionPanel.add(cbStatus);
                 qp.add(actionPanel, BorderLayout.EAST);
                 
-                // Edit button: Open CreateQuotationPanel in edit mode
-                btnEdit.addActionListener(new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        JFrame editFrame = new JFrame("Edit Quotation - #" + quotationId);
-                        editFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-                        CreateQuotationPanel editPanel = new CreateQuotationPanel(salesPersonId, quotationId);
-                        editFrame.add(editPanel);
-                        editFrame.setSize(600, 600);
-                        editFrame.setLocationRelativeTo(null);
-                        editFrame.setVisible(true);
-                    }
+                // Edit button => open CreateQuotationPanel in edit mode
+                btnEdit.addActionListener(e -> {
+                    JFrame editFrame = new JFrame("Edit Quotation - #" + quotationId);
+                    editFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+                    CreateQuotationPanel editPanel = new CreateQuotationPanel(salesPersonId, quotationId);
+                    editFrame.add(editPanel);
+                    editFrame.setSize(800, 600);
+                    editFrame.setLocationRelativeTo(null);
+                    editFrame.setVisible(true);
                 });
                 
-                // Status dropdown: When selection changes, update status in DB and refresh list
-                cbStatus.addActionListener(new ActionListener() {
-                    public void actionPerformed(ActionEvent e) {
-                        String newStatus = (String) cbStatus.getSelectedItem();
-                        updateQuotationStatus(quotationId, newStatus);
-                        loadQuotationsFromDB();
-                    }
+                // Status dropdown => update DB and refresh
+                cbStatus.addActionListener(e -> {
+                    String newStatus = (String) cbStatus.getSelectedItem();
+                    updateQuotationStatus(quotationId, newStatus);
+                    loadQuotationsFromDB();
                 });
                 
                 quotationsContainer.add(qp);
@@ -131,12 +132,46 @@ public class QuotationPanel extends JPanel {
         } catch (SQLException ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this,
-                    "Error loading quotations: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                "Error loading quotations: " + ex.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
         }
         
         revalidate();
         repaint();
+    }
+    
+    // If you still want to fetch item lines for internal logic, keep this.
+    // Otherwise, you can remove it.
+    private static class ItemLine {
+        String itemName;
+        int quantity;
+        double price;
+        ItemLine(String itemName, int quantity, double price) {
+            this.itemName = itemName;
+            this.quantity = quantity;
+            this.price = price;
+        }
+    }
+    
+    private List<ItemLine> loadItemsForQuotation(Connection conn, int quotationId) throws SQLException {
+        List<ItemLine> result = new ArrayList<>();
+        String sql = 
+            "SELECT i.item_name, qi.quantity, qi.price "
+          + "FROM quotation_items qi "
+          + "JOIN items i ON qi.item_id = i.item_id "
+          + "WHERE qi.quotation_id = ?";
+        PreparedStatement pst = conn.prepareStatement(sql);
+        pst.setInt(1, quotationId);
+        ResultSet rs = pst.executeQuery();
+        while (rs.next()) {
+            String itemName = rs.getString("item_name");
+            int quantity = rs.getInt("quantity");
+            double price = rs.getDouble("price");
+            result.add(new ItemLine(itemName, quantity, price));
+        }
+        rs.close();
+        pst.close();
+        return result;
     }
     
     private void updateQuotationStatus(int quotationId, String newStatus) {
@@ -150,18 +185,18 @@ public class QuotationPanel extends JPanel {
             pst.close();
             if (rows > 0) {
                 JOptionPane.showMessageDialog(this,
-                        "Quotation #" + quotationId + " updated to " + newStatus + ".",
-                        "Success", JOptionPane.INFORMATION_MESSAGE);
+                    "Quotation #" + quotationId + " updated to " + newStatus + ".",
+                    "Success", JOptionPane.INFORMATION_MESSAGE);
             } else {
                 JOptionPane.showMessageDialog(this,
-                        "Update failed for Quotation #" + quotationId + ".",
-                        "Info", JOptionPane.INFORMATION_MESSAGE);
+                    "Update failed for Quotation #" + quotationId + ".",
+                    "Info", JOptionPane.INFORMATION_MESSAGE);
             }
         } catch (SQLException ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(this,
-                    "Error updating quotation: " + ex.getMessage(),
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                "Error updating quotation: " + ex.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 }
